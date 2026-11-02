@@ -1,4 +1,4 @@
-// Copia a public/models los tres modelos de face-api que usa el kiosco (detector, puntos del rostro y descriptor).
+// Copia a public/models los tres modelos de face-api que usa el marcador facial (detector, puntos del rostro y descriptor).
 // Se ejecuta solo antes de `npm run dev` y `npm run build`: los modelos viajan con la app y no se descargan de internet.
 import { cpSync, existsSync, mkdirSync } from 'node:fs';
 

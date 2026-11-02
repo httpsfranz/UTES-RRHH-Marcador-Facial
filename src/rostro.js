@@ -1,4 +1,5 @@
 import * as faceapi from '@vladmandic/face-api';
+import { giroHorizontal } from './vida.js';
 
 // Deteccion y descriptor del rostro con face-api (TensorFlow.js en el navegador). El descriptor son 128 numeros que
 // resumen la cara: se envian a UTES, que es quien decide a quien corresponde. Nunca se guardan ni se envian fotos.
@@ -30,7 +31,9 @@ export async function leerRostro(video) {
   const deteccion = await faceapi.detectSingleFace(video, OPCIONES).withFaceLandmarks().withFaceDescriptor();
   if (!deteccion) return null;
   const caja = deteccion.detection.box;
-  return { descriptor: deteccion.descriptor, caja, proporcion: caja.width / video.videoWidth, puntaje: deteccion.detection.score };
+  const { landmarks } = deteccion;
+  const giro = giroHorizontal(landmarks.getLeftEye(), landmarks.getRightEye(), landmarks.getNose()[3]);
+  return { descriptor: deteccion.descriptor, giro, caja, proporcion: caja.width / video.videoWidth, puntaje: deteccion.detection.score };
 }
 
 export function promedio(descriptores) {

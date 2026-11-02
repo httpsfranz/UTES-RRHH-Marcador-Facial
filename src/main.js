@@ -1,8 +1,9 @@
 import { API_POR_DEFECTO, guardarConfig, leerConfig } from './config.js';
 import { comoDispositivo, iniciarSesion } from './api.js';
 import { aBase64, cargarModelos, distancia, encenderCamara, leerRostro, promedio } from './rostro.js';
+import { cumpleReto, estaDeFrente, retoAlAzar } from './vida.js';
 
-// Kiosco de marcacion facial para UTES-RRHH. Tres pantallas:
+// Marcador facial para UTES-RRHH. Tres pantallas:
 //  - configurar: a que API y con que dispositivo se conecta (una vez por equipo);
 //  - marcar: la camara busca un rostro, lo envia a UTES y muestra la entrada o salida registrada;
 //  - registrar: RRHH ingresa con su usuario de UTES y guarda el rostro de un trabajador (con consentimiento vigente).
@@ -12,11 +13,13 @@ const MS_ENTRE_LECTURAS = 250;
 const LECTURAS_PARA_MARCAR = 3; // cuadros seguidos con el mismo rostro antes de enviar (evita marcas por un vistazo)
 const PROPORCION_MINIMA = 0.2; // ancho del rostro / ancho del video: mas lejos no se marca
 const MS_RESULTADO = 4000;
+const MS_RETO = 7000; // tiempo para girar la cabeza
+const DISTANCIA_MISMA_PERSONA = 0.6; // al girar cambia el descriptor: se tolera mas que entre cuadros de frente
 const MUESTRAS_DE_REGISTRO = 5;
 
 let config = leerConfig();
 let dispositivo = null;
-let desfaseReloj = 0; // hora del servidor - hora local (el reloj del kiosco muestra la del servidor)
+let desfaseReloj = 0; // hora del servidor - hora local (el reloj del marcador facial muestra la del servidor)
 let modelos = null;
 let apagarCamara = null;
 let pantalla = null;
@@ -124,6 +127,7 @@ async function iniciarMarcacion() {
   const api = comoDispositivo(config);
   let lecturas = [];
   let pausaHasta = 0;
+  let reto = null; // { lado, descriptor, vence }
 
   const ciclo = async () => {
     if (pantalla !== 'marcar' || !apagarCamara) return;
@@ -133,14 +137,35 @@ async function iniciarMarcacion() {
       const rostro = await leerRostro(video);
       if (!rostro) {
         lecturas = [];
+        reto = null;
         dibujarCaja(video, null);
         estado('Acércate a la cámara para marcar.');
+        return;
+      }
+      if (reto) {
+        dibujarCaja(video, rostro.caja, '#14b8a6');
+        if (Date.now() > reto.vence || distancia(reto.descriptor, rostro.descriptor) > DISTANCIA_MISMA_PERSONA) {
+          reto = null;
+          estado('No se comprobó el giro. Mira de frente para intentarlo otra vez.', 'aviso');
+          return;
+        }
+        if (!cumpleReto(reto.lado, rostro.giro)) return;
+        const descriptor = Array.from(reto.descriptor);
+        reto = null;
+        estado('Verificando…');
+        await enviarMarca(descriptor);
         return;
       }
       if (rostro.proporcion < PROPORCION_MINIMA) {
         lecturas = [];
         dibujarCaja(video, rostro.caja, '#f59e0b');
         estado('Acércate un poco más.', 'aviso');
+        return;
+      }
+      if (!estaDeFrente(rostro.giro)) {
+        lecturas = [];
+        dibujarCaja(video, rostro.caja, '#f59e0b');
+        estado('Mira de frente a la cámara.', 'aviso');
         return;
       }
       // Debe ser el mismo rostro en cuadros seguidos (si cambia, se empieza de nuevo).
@@ -150,25 +175,29 @@ async function iniciarMarcacion() {
       estado('Quédate quieto…');
       if (lecturas.length < LECTURAS_PARA_MARCAR) return;
 
-      const descriptor = Array.from(promedio(lecturas));
+      const lado = retoAlAzar();
+      reto = { lado, descriptor: promedio(lecturas), vence: Date.now() + MS_RETO };
       lecturas = [];
-      estado('Verificando…');
-      try {
-        const r = await api.marcar(descriptor);
-        verResultado(
-          r.resultado === 'REGISTRADA'
-            ? { tono: 'ok', icono: '✓', titulo: r.tipo === 'ENTRADA' ? `Entrada · ${r.hora}` : `Salida · ${r.hora}`, nombre: r.trabajador, detalle: r.mensaje }
-            : { tono: 'info', icono: 'i', titulo: 'Ya estabas marcado', nombre: r.trabajador, detalle: r.mensaje },
-        );
-      } catch (error) {
-        verResultado({ tono: 'error', icono: '!', titulo: error.estado === 422 ? 'No se registró' : 'Sin conexión', detalle: error.message });
-      }
-      pausaHasta = Date.now() + MS_RESULTADO;
-      dibujarCaja(video, null);
-      estado('Siguiente persona: acércate a la cámara.');
+      estado(`Gira la cabeza a tu ${lado === 'IZQUIERDA' ? 'izquierda ←' : 'derecha →'}`, 'aviso');
     } finally {
       if (pantalla === 'marcar' && apagarCamara) setTimeout(ciclo, MS_ENTRE_LECTURAS);
     }
+  };
+
+  const enviarMarca = async (descriptor) => {
+    try {
+      const r = await api.marcar(descriptor);
+      verResultado(
+        r.resultado === 'REGISTRADA'
+          ? { tono: 'ok', icono: '✓', titulo: r.tipo === 'ENTRADA' ? `Entrada · ${r.hora}` : `Salida · ${r.hora}`, nombre: r.trabajador, detalle: r.mensaje }
+          : { tono: 'info', icono: 'i', titulo: 'Ya estabas marcado', nombre: r.trabajador, detalle: r.mensaje },
+      );
+    } catch (error) {
+      verResultado({ tono: 'error', icono: '!', titulo: error.estado === 422 ? 'No se registró' : 'Sin conexión', detalle: error.message });
+    }
+    pausaHasta = Date.now() + MS_RESULTADO;
+    dibujarCaja(video, null);
+    estado('Siguiente persona: acércate a la cámara.');
   };
   ciclo();
 }
@@ -199,7 +228,7 @@ function iniciarRegistro() {
   pasoDeRegistro('buscar');
 }
 
-// Al salir de la pantalla de registro se cierra la sesion de RRHH: el kiosco no queda con un usuario abierto.
+// Al salir de la pantalla de registro se cierra la sesion de RRHH: el marcador facial no queda con un usuario abierto.
 const salirDeRegistro = () => {
   sesion?.cerrar();
   sesion = null;
@@ -310,7 +339,7 @@ $('reg-capturar').addEventListener('click', async () => {
   }
   try {
     await sesion.guardarRostro(elegido.id, aBase64(descriptor));
-    $('reg-estado').textContent = `Rostro de ${elegido.nombre_completo} registrado. Ya puede marcar en este kiosco.`;
+    $('reg-estado').textContent = `Rostro de ${elegido.nombre_completo} registrado. Ya puede marcar en este marcador facial.`;
   } catch (error) {
     errorDeRegistro(error.message);
     boton.disabled = false;

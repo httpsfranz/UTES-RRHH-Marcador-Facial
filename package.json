@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Kiosco de marcación por reconocimiento facial para UTES-RRHH",
+  "description": "Marcador por reconocimiento facial para UTES-RRHH",
   "scripts": {
     "predev": "node scripts/copiar-modelos.mjs",
     "prebuild": "node scripts/copiar-modelos.mjs",

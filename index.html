@@ -22,9 +22,9 @@
     </header>
 
     <main>
-      <!-- Configuracion del kiosco (una sola vez por equipo) -->
+      <!-- Configuracion del marcador facial (una sola vez por equipo) -->
       <section id="pantalla-configurar" class="tarjeta angosta" hidden>
-        <h1>Configurar este kiosco</h1>
+        <h1>Configurar este marcador facial</h1>
         <p class="ayuda">
           Pide a RRHH el código del dispositivo y su clave. Se obtienen en el servidor de UTES con
           <code>php artisan biometria:clave-dispositivo</code>.
@@ -41,7 +41,7 @@
         </form>
       </section>
 
-      <!-- Marcacion: la pantalla normal del kiosco -->
+      <!-- Marcacion: la pantalla normal del marcador facial -->
       <section id="pantalla-marcar" class="marcar" hidden>
         <div class="camara">
           <video id="video" autoplay muted playsinline></video>

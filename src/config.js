@@ -1,4 +1,4 @@
-// Configuracion del kiosco, guardada en este navegador: a que API se conecta y con que dispositivo de UTES se identifica.
+// Configuracion del marcador facial, guardada en este navegador: a que API se conecta y con que dispositivo de UTES se identifica.
 // La clave se obtiene en el servidor con `php artisan biometria:clave-dispositivo CODIGO`.
 const CLAVE = 'marcador-facial.config';
 
